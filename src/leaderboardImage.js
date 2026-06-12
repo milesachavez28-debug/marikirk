@@ -1,28 +1,26 @@
-import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 
-const W = 680;
-const ROW_H = 80;
-const PADDING = 16;
-const AVATAR_SIZE = 50;
-const HEADER_H = 64;
+const W = 720;
+const HEADER_H = 90;
+const ROW_H = 100;
+const PADDING = 20;
+const AVATAR = 52;
 
 const COLORS = {
-  bg:          '#1e1f26',
-  rowEven:     '#25262e',
-  rowOdd:      '#2a2b34',
-  header:      '#5865f2',
-  headerText:  '#ffffff',
-  name:        '#e8e9ef',
-  amount:      '#a0a7b4',
-  barBg:       '#3a3b45',
-  barFill:     ['#ffd700', '#5865f2', '#4fc3f7'],
-  barGoal:     '#57f287',
-  medal:       ['#ffd700', '#c0c0c0', '#cd7f32'],
-  rankText:    '#6b7280',
-  white:       '#ffffff',
+  bg: '#1e1f26',
+  rowA: '#23242c',
+  rowB: '#2a2b34',
+  text: '#ffffff',
+  subtext: '#a9b1bd',
+  barBg: '#3a3b45',
+  barFill: '#5865f2',
+  gold: '#ffd700',
+  silver: '#c0c0c0',
+  bronze: '#cd7f32',
+  green: '#57f287'
 };
 
-function drawRoundedRect(ctx, x, y, w, h, r) {
+function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);
@@ -36,165 +34,131 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function clipCircle(ctx, x, y, r) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.clip();
-}
-
-async function fetchAvatar(url) {
+async function safeAvatar(url) {
   try {
-    return await loadImage(url + '?size=64');
+    return await loadImage(url);
   } catch {
     return null;
   }
 }
 
 export async function generateLeaderboardImage(entries, title, timeLeft) {
-  const count = entries.length;
-  const H = HEADER_H + count * ROW_H + PADDING;
+  const height = HEADER_H + entries.length * ROW_H + PADDING;
 
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(W, height);
   const ctx = canvas.getContext('2d');
 
   // Background
   ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, W, height);
 
-  // Header bar
+  // Header
   const grad = ctx.createLinearGradient(0, 0, W, HEADER_H);
   grad.addColorStop(0, '#5865f2');
   grad.addColorStop(1, '#4752c4');
+
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, HEADER_H);
 
-  // Header title
-  ctx.fillStyle = COLORS.headerText;
-  ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('💧 ' + title, 20, 38);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`💧 ${title}`, 20, 55);
 
-  // Time left (right-aligned in header)
   if (timeLeft) {
-    ctx.font = '13px sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    const tw = ctx.measureText('Resets in ' + timeLeft).width;
-    ctx.fillText('Resets in ' + timeLeft, W - tw - 20, 38);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Resets in ${timeLeft}`, W - 20, 55);
   }
 
-  // Load all avatars in parallel
-  const avatars = await Promise.all(entries.map(e => fetchAvatar(e.avatarUrl)));
+  // Load avatars
+  const avatars = await Promise.all(
+    entries.map(e => safeAvatar(e.avatarUrl))
+  );
 
-  // Draw each row
-  for (let i = 0; i < count; i++) {
-    const entry = entries[i];
+  // Rows
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
     const y = HEADER_H + i * ROW_H;
 
-    // Row background
-    ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+    // row bg
+    ctx.fillStyle = i % 2 ? COLORS.rowA : COLORS.rowB;
     ctx.fillRect(0, y, W, ROW_H);
 
-    // Subtle left accent for top 3
-    if (i < 3) {
-      ctx.fillStyle = COLORS.medal[i] + '99';
-      ctx.fillRect(0, y, 3, ROW_H);
-    }
+    // rank
+    const medals = ['🥇', '🥈', '🥉'];
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillStyle = i < 3 ? COLORS.gold : COLORS.subtext;
 
-    // Rank number / medal
-    ctx.save();
-    const rankX = 28;
-    const rankY = y + ROW_H / 2;
-    if (i < 3) {
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillStyle = COLORS.medal[i];
-      const medals = ['🥇', '🥈', '🥉'];
-      ctx.fillText(medals[i], rankX - 12, rankY + 7);
-    } else {
-      ctx.font = 'bold 15px sans-serif';
-      ctx.fillStyle = COLORS.rankText;
-      ctx.textAlign = 'center';
-      ctx.fillText(`${i + 1}`, rankX, rankY + 5);
-    }
-    ctx.restore();
+    ctx.fillText(
+      i < 3 ? medals[i] : `${i + 1}`,
+      30,
+      y + 55
+    );
 
-    // Avatar circle
-    const avatarX = 60;
-    const avatarY = y + ROW_H / 2;
+    // avatar
+    const ax = 60;
+    const ay = y + 25;
+
     ctx.save();
     ctx.beginPath();
-    ctx.arc(avatarX + AVATAR_SIZE / 2, avatarY, AVATAR_SIZE / 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#3a3b45';
-    ctx.fill();
+    ctx.arc(ax + 26, ay + 26, 26, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+
     if (avatars[i]) {
-      ctx.beginPath();
-      ctx.arc(avatarX + AVATAR_SIZE / 2, avatarY, AVATAR_SIZE / 2, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(avatars[i], avatarX, avatarY - AVATAR_SIZE / 2, AVATAR_SIZE, AVATAR_SIZE);
-    } else {
-      // Fallback: initials
-      ctx.fillStyle = COLORS.name;
-      ctx.font = 'bold 18px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText((entry.username[0] ?? '?').toUpperCase(), avatarX + AVATAR_SIZE / 2, avatarY);
+      ctx.drawImage(avatars[i], ax, ay, AVATAR, AVATAR);
     }
+
     ctx.restore();
 
-    // Username
-    const textX = avatarX + AVATAR_SIZE + 12;
-    ctx.fillStyle = COLORS.name;
-    ctx.font = 'bold 15px sans-serif';
+    // username
+    const tx = 130;
+
+    ctx.fillStyle = COLORS.text;
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(entry.username, textX, y + 26);
+    ctx.fillText(e.username, tx, y + 40);
 
-    // Amount
-    const oz = (entry.total / 29.5735).toFixed(1);
-    const goalOz = (entry.goalMl / 29.5735).toFixed(1);
-    ctx.fillStyle = COLORS.amount;
-    ctx.font = '12px sans-serif';
-    ctx.fillText(`${oz}oz / ${goalOz}oz`, textX, y + 44);
+    // stats
+    const oz = (e.total / 29.5735).toFixed(1);
+    const percent = Math.min(
+      100,
+      Math.round((e.total / e.goalMl) * 100)
+    );
 
-    // Progress bar
-    const barX = textX;
-    const barY = y + 52;
-    const barW = W - textX - PADDING - 60;
-    const barH = 8;
-    const percent = Math.min(1, entry.total / entry.goalMl);
+    ctx.fillStyle = COLORS.subtext;
+    ctx.font = '14px sans-serif';
+    ctx.fillText(`${oz} oz • ${e.total} ml`, tx, y + 65);
 
-    // Bar background
-    drawRoundedRect(ctx, barX, barY, barW, barH, 4);
+    // percent right side
+    ctx.fillStyle =
+      percent >= 100 ? COLORS.green : COLORS.subtext;
+
+    ctx.textAlign = 'right';
+    ctx.fillText(`${percent}%`, W - 20, y + 45);
+
+    // progress bar
+    const barX = tx;
+    const barY = y + 75;
+    const barW = W - tx - 60;
+    const barH = 10;
+
+    // background
+    roundRect(ctx, barX, barY, barW, barH, 6);
     ctx.fillStyle = COLORS.barBg;
     ctx.fill();
 
-    // Bar fill
-    if (percent > 0) {
-      drawRoundedRect(ctx, barX, barY, Math.max(barH, barW * percent), barH, 4);
-      const barGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-      if (percent >= 1) {
-        barGrad.addColorStop(0, '#43b581');
-        barGrad.addColorStop(1, '#57f287');
-      } else if (i === 0) {
-        barGrad.addColorStop(0, '#ffd700');
-        barGrad.addColorStop(1, '#ffb700');
-      } else {
-        barGrad.addColorStop(0, '#5865f2');
-        barGrad.addColorStop(1, '#4fc3f7');
-      }
-      ctx.fillStyle = barGrad;
-      ctx.fill();
-    }
+    // fill
+    const fillW = Math.max(0, Math.min(1, e.total / e.goalMl)) * barW;
 
-    // Percent label
-    ctx.fillStyle = percent >= 1 ? '#57f287' : COLORS.amount;
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${Math.round(percent * 100)}%`, W - PADDING, barY + 8);
+    roundRect(ctx, barX, barY, fillW, barH, 6);
+    ctx.fillStyle =
+      percent >= 100 ? COLORS.green : COLORS.barFill;
+    ctx.fill();
   }
-
-  // Bottom padding stripe
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, HEADER_H + count * ROW_H, W, PADDING);
 
   return canvas.toBuffer('image/png');
 }
